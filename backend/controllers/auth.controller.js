@@ -62,7 +62,7 @@ export const login = async (req, res) => {
     const user = await User.findOne({ username });
     const ispasswordcorrect = await bcrypt.compare(
       password,
-      user.password || ""
+      user.password || "",
     );
     if (!ispasswordcorrect || !username) {
       return res.status(400).json({ error: "Invalid credentials" });
@@ -91,6 +91,19 @@ export const logout = async (req, res) => {
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
     console.error("error in logout controller", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getme = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("error in getme controller", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 };
