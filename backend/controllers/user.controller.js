@@ -1,5 +1,8 @@
 import bcryptjs from "bcryptjs";
+import { v2 as cloudinary } from "cloudinary";
+
 import User from "../model/user.model.js";
+
 export const getUserProfile = async (req, res) => {
   const { username } = req.params;
   try {
@@ -81,7 +84,7 @@ export const updateUserProfile = async (req, res) => {
 
   const userId = req.user._id;
   try {
-    const user = await User.findById(userId);
+    let user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -89,12 +92,9 @@ export const updateUserProfile = async (req, res) => {
       (!currentPassword && newPassword) ||
       (currentPassword && !newPassword)
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Both current and new passwords are required to update password",
-        });
+      return res.status(400).json({
+        error: "Both current and new passwords are required to update password",
+      });
     }
     if (currentPassword && newPassword) {
       const isMatch = await bcryptjs.compare(currentPassword, user.password);
@@ -110,6 +110,38 @@ export const updateUserProfile = async (req, res) => {
       const salt = await bcryptjs.genSalt(10);
       user.password = await bcryptjs.hash(newPassword, salt);
     }
+    if (profileimg) {
+      if (profileimg) {
+        await cloudinary.uploader.destroy(
+          user.profileimg.split("/").pop().split(".")[0],
+        );
+      }
+      const uploadedResponse = await cloudinary.uploader.upload(profileimg);
+      profileimg = uploadedResponse.secure_url;
+    }
+    if (coverimg) {
+      if (coverimg) {
+        await cloudinary.uploader.destroy(
+          user.coverimg.split("/").pop().split(".")[0],
+        );
+      }
+      const uploadedResponse = await cloudinary.uploader.upload(coverimg);
+      coverimg = uploadedResponse.secure_url;
+    }
+
+    user.username = username || user.username;
+    user.fullname = fullname || user.fullname;
+    user.email = email || user.email;
+    user.bio = bio || user.bio;
+    user.link = line || user.link;
+    user.profileimg = profileimg || user.profileimg;
+    user.coverimg = coverimg || user.coverimg;
+
+    user = await user.save();
+
+    user.password = null;
+
+    return res.status(200).json(user);
   } catch (error) {
     console.error("Error in updateUserProfile controller", error.message);
     res.status(500).json({ message: "Internal server error" });
