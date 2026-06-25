@@ -75,8 +75,9 @@ export const getUserSuggestions = async (req, res) => {
 };
 
 export const updateUserProfile = async (req, res) => {
-  const { username, fullname, email, currentPassword newPassword,bio,line} = req.body;
-  let {profileimg, coverimg} = req.body;
+  const { username, fullname, email, currentPassword, newPassword, bio, line } =
+    req.body;
+  let { profileimg, coverimg } = req.body;
 
   const userId = req.user._id;
   try {
@@ -84,23 +85,32 @@ export const updateUserProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    if ((!currentPassword && newPassword)||(currentPassword && !newPassword)) {
-      return res.status(400).json({ error: "Both current and new passwords are required to update password" });
-
-  }
-  if (currentPassword && newPassword) {
-    const isMatch = await bcryptjs.compare(currentPassword, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Current password is incorrect" });
+    if (
+      (!currentPassword && newPassword) ||
+      (currentPassword && !newPassword)
+    ) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Both current and new passwords are required to update password",
+        });
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: "New password must be at least 6 characters long" });
-    }
+    if (currentPassword && newPassword) {
+      const isMatch = await bcryptjs.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: "Current password is incorrect" });
+      }
+      if (newPassword.length < 6) {
+        return res
+          .status(400)
+          .json({ error: "New password must be at least 6 characters long" });
+      }
 
-    const salt = await bcryptjs.genSalt(10);
-    user.password = await bcryptjs.hash(newPassword, salt);
-}
-   catch (error) {
+      const salt = await bcryptjs.genSalt(10);
+      user.password = await bcryptjs.hash(newPassword, salt);
+    }
+  } catch (error) {
     console.error("Error in updateUserProfile controller", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
