@@ -3,18 +3,17 @@ import {
   signup,
   login,
   logout,
-  getme,
+  getMe,
 } from "../controllers/auth.controller.js";
-import { protectroutes } from "../middleware/protectroutes.js";
+import { protectRoute } from "../middleware/protectroutes.js";
+import validate from "../middleware/validate.js";
+import { signupSchema, loginSchema } from "../validators/auth.validator.js";
 
 const router = express.Router();
 
-router.get("/me", protectroutes, getme);
-
-router.post("/signup", signup);
-
-router.post("/login", login);
-
+router.get("/me", protectRoute, getMe);
+router.post("/signup", validate(signupSchema), signup);
+router.post("/login", validate(loginSchema), login);
 router.post("/logout", logout);
 
 export default router;

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-const userschema = new mongoose.Schema(
+
+const userSchema = new mongoose.Schema(
   {
     username: {
       type: String,
@@ -24,14 +25,12 @@ const userschema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        default: [],
       },
     ],
     following: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        default: [],
       },
     ],
     bio: {
@@ -51,8 +50,13 @@ const userschema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
   },
   { timestamps: true },
 );
 
-export default mongoose.model("User", userschema);
+export default mongoose.model("User", userSchema);

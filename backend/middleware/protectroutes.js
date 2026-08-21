@@ -1,24 +1,35 @@
-import User from "../model/user.model.js";
 import jwt from "jsonwebtoken";
-export const protectroutes = async (req, res, next) => {
+import User from "../model/user.model.js";
+import ApiError from "../utils/ApiError.js";
+import env from "../config/env.js";
+
+export const protectRoute = async (req, res, next) => {
   try {
     const token = req.cookies.jwt;
     if (!token) {
-      return res.status(401).json({ error: "Not authorized, no token" });
+      throw new ApiError(401, "Not authorized, no token");
     }
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded) {
-      return res.status(401).json({ error: "Not authorized, invalid token" });
-    }
-    const user = await User.findById(decoded.user).select("-password");
+
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+
+    const user = await User.findById(decoded.userId).select("-password");
     if (!user) {
-      return res.status(401).json({ error: "Not authorized, user not found" });
+      throw new ApiError(401, "Not authorized, user not found");
     }
 
     req.user = user;
     next();
   } catch (error) {
-    console.error("error in protectroutes middleware", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    if (error instanceof ApiError) {
+      return next(error);
+    }
+    // Let JWT errors propagate to global error handler
+    if (
+      error.name === "JsonWebTokenError" ||
+      error.name === "TokenExpiredError"
+    ) {
+      return next(error);
+    }
+    next(new ApiError(500, "Internal server error"));
   }
 };

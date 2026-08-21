@@ -1,149 +1,48 @@
-import bcryptjs from "bcryptjs";
-import { v2 as cloudinary } from "cloudinary";
+import {
+  getProfileByUsername,
+  toggleFollow,
+  getSuggestedUsers,
+  updateProfile,
+} from "../services/user.service.js";
+import ApiResponse from "../utils/ApiResponse.js";
 
-import User from "../model/user.model.js";
-
-export const getUserProfile = async (req, res) => {
-  const { username } = req.params;
+export const getUserProfile = async (req, res, next) => {
   try {
-    const user = await User.findOne({ username }).select("-password");
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    const user = await getProfileByUsername(req.params.username);
+    return ApiResponse.success(res, 200, "Profile fetched successfully", user);
   } catch (error) {
-    console.error("Error in getUserProfile controller", error.message);
-    res.status(500).json("internal server error", error);
+    next(error);
   }
 };
 
-export const followunfollowUser = async (req, res) => {
+export const followOrUnfollowUser = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const usertomodify = await User.findById(id);
-    const currentuser = await User.findById(req.user._id);
-    if (!usertomodify || !currentuser) {
-      return res.status(400).json({ error: "User not found" });
-    }
-    if (req.user._id.toString() === id) {
-      return res.status(400).json({ error: "You cannot follow yourself" });
-    }
-    const isfollowing = currentuser.following.includes(id);
-    if (isfollowing) {
-      // Unfollow user
-      await User.findByIdAndUpdate(id, { $pull: { followers: req.user._id } });
-      await User.findByIdAndUpdate(req.user._id, { $pull: { following: id } });
-      res.status(200).json({ message: "User unfollowed successfully" });
-    } else {
-      // Follow user
-      await User.findByIdAndUpdate(id, {
-        $push: { followers: req.user._id },
-      });
-      await User.findByIdAndUpdate(req.user._id, { following: id });
-      res.status(200).json({ message: "User followed successfully" });
-    }
+    const result = await toggleFollow(req.user._id, req.params.id);
+    return ApiResponse.success(res, 200, result.message);
   } catch (error) {
-    console.error("Error in followunfollowUser controller", error.message);
-    res.status(500).json("internal server error", error);
+    next(error);
   }
 };
 
-export const getUserSuggestions = async (req, res) => {
+export const getUserSuggestions = async (req, res, next) => {
   try {
-    const userId = req.user._id;
-
-    const userfollowedbyme = await User.findById(userId).select("following");
-
-    const users = await User.aggregate([
-      {
-        $match: {
-          _id: {
-            $ne: userId,
-          },
-        },
-      },
-      { $sample: { size: 10 } },
-    ]);
-
-    res.status(200).json(users);
-    const suggestions = users.filter(
-      (user) => !userfollowedbyme.following.includes(user._id),
+    const users = await getSuggestedUsers(req.user._id);
+    return ApiResponse.success(
+      res,
+      200,
+      "Suggestions fetched successfully",
+      users,
     );
-    const limitedSuggestions = suggestions.slice(0, 5);
-    limitedSuggestions.forEach((suggestion) => (user.password = null));
-    res.status(200).json(limitedSuggestions);
   } catch (error) {
-    console.error("Error in getUserSuggestions controller", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };
 
-export const updateUserProfile = async (req, res) => {
-  const { username, fullname, email, currentPassword, newPassword, bio, line } =
-    req.body;
-  let { profileimg, coverimg } = req.body;
-
-  const userId = req.user._id;
+export const updateUserProfile = async (req, res, next) => {
   try {
-    let user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    if (
-      (!currentPassword && newPassword) ||
-      (currentPassword && !newPassword)
-    ) {
-      return res.status(400).json({
-        error: "Both current and new passwords are required to update password",
-      });
-    }
-    if (currentPassword && newPassword) {
-      const isMatch = await bcryptjs.compare(currentPassword, user.password);
-      if (!isMatch) {
-        return res.status(400).json({ error: "Current password is incorrect" });
-      }
-      if (newPassword.length < 6) {
-        return res
-          .status(400)
-          .json({ error: "New password must be at least 6 characters long" });
-      }
-
-      const salt = await bcryptjs.genSalt(10);
-      user.password = await bcryptjs.hash(newPassword, salt);
-    }
-    if (profileimg) {
-      if (profileimg) {
-        await cloudinary.uploader.destroy(
-          user.profileimg.split("/").pop().split(".")[0],
-        );
-      }
-      const uploadedResponse = await cloudinary.uploader.upload(profileimg);
-      profileimg = uploadedResponse.secure_url;
-    }
-    if (coverimg) {
-      if (coverimg) {
-        await cloudinary.uploader.destroy(
-          user.coverimg.split("/").pop().split(".")[0],
-        );
-      }
-      const uploadedResponse = await cloudinary.uploader.upload(coverimg);
-      coverimg = uploadedResponse.secure_url;
-    }
-
-    user.username = username || user.username;
-    user.fullname = fullname || user.fullname;
-    user.email = email || user.email;
-    user.bio = bio || user.bio;
-    user.link = line || user.link;
-    user.profileimg = profileimg || user.profileimg;
-    user.coverimg = coverimg || user.coverimg;
-
-    user = await user.save();
-
-    user.password = null;
-
-    return res.status(200).json(user);
+    const user = await updateProfile(req.user._id, req.body);
+    return ApiResponse.success(res, 200, "Profile updated successfully", user);
   } catch (error) {
-    console.error("Error in updateUserProfile controller", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };

@@ -1,109 +1,45 @@
-import express from "express";
-import User from "../model/user.model.js";
-import bcrypt from "bcryptjs";
-import { generatetokenandsetcookie } from "../lib/utils/generateToken.js";
+import {
+  createUser,
+  authenticateUser,
+  getUserById,
+} from "../services/auth.service.js";
+import { generateTokenAndSetCookie } from "../lib/utils/generateToken.js";
+import ApiResponse from "../utils/ApiResponse.js";
 
-export const signup = async (req, res) => {
+export const signup = async (req, res, next) => {
   try {
-    const { fullname, username, email, password } = req.body;
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: "Invalid email format" });
-    }
-
-    const userByUsername = await User.findOne({ username });
-    if (userByUsername) {
-      return res.status(400).json({ error: "Username already taken" });
-    }
-
-    const userByEmail = await User.findOne({ email });
-    if (userByEmail) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
-    if (password.length < 6) {
-      return res
-        .status(400)
-        .json({ error: "Password must be at least 6 characters" });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const newUser = new User({
-      fullname,
-      username,
-      email,
-      password: hashedPassword,
-    });
-
-    await newUser.save();
-    generatetokenandsetcookie(newUser._id, res);
-
-    res.status(201).json({
-      _id: newUser._id,
-      username: newUser.username,
-      email: newUser.email,
-      fullname: newUser.fullname,
-      followers: newUser.followers,
-      following: newUser.following,
-      profileimg: newUser.profileimg,
-      coverimg: newUser.coverimg,
-    });
+    const user = await createUser(req.body);
+    generateTokenAndSetCookie(user._id, res);
+    return ApiResponse.success(res, 201, "User created successfully", user);
   } catch (error) {
-    console.error("error in signup controller", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    next(error);
   }
 };
 
-export const login = async (req, res) => {
+export const login = async (req, res, next) => {
   try {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username });
-    const ispasswordcorrect = await bcrypt.compare(
-      password,
-      user.password || "",
-    );
-    if (!ispasswordcorrect || !username) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
-    generatetokenandsetcookie(user._id, res);
-
-    res.status(200).json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      fullname: user.fullname,
-      followers: user.followers,
-      following: user.following,
-      profileimg: user.profileimg,
-      coverimg: user.coverimg,
-    });
+    const user = await authenticateUser(req.body);
+    generateTokenAndSetCookie(user._id, res);
+    return ApiResponse.success(res, 200, "Logged in successfully", user);
   } catch (error) {
-    console.error("error in signup controller", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    next(error);
   }
 };
 
-export const logout = async (req, res) => {
+export const logout = async (req, res, next) => {
   try {
     res.cookie("jwt", "", { maxAge: 0 });
-    res.status(200).json({ message: "Logged out successfully" });
+    return ApiResponse.success(res, 200, "Logged out successfully");
   } catch (error) {
-    console.error("error in logout controller", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    next(error);
   }
 };
 
-export const getme = async (req, res) => {
+export const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).select("-password");
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    res.status(200).json(user);
+    const user = await getUserById(req.user._id);
+    return ApiResponse.success(res, 200, "User fetched successfully", user);
   } catch (error) {
-    console.error("error in getme controller", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    next(error);
   }
 };

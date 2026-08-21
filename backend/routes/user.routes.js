@@ -1,16 +1,38 @@
 import express from "express";
-import { protectroutes } from "../middleware/protectroutes.js";
+import { protectRoute } from "../middleware/protectroutes.js";
 import {
   getUserProfile,
-  followunfollowUser,
+  followOrUnfollowUser,
   getUserSuggestions,
   updateUserProfile,
 } from "../controllers/user.controller.js";
+import validate, { validateParams } from "../middleware/validate.js";
+import {
+  updateProfileSchema,
+  followParamsSchema,
+  profileParamsSchema,
+} from "../validators/user.validator.js";
+
 const router = express.Router();
 
-router.get("/profile/:username", protectroutes, getUserProfile);
-router.post("/update", protectroutes, updateUserProfile);
-router.post("/suggestions", protectroutes, getUserSuggestions);
-router.post("/follow/:id", protectroutes, followunfollowUser);
+router.get(
+  "/profile/:username",
+  protectRoute,
+  validateParams(profileParamsSchema),
+  getUserProfile,
+);
+router.get("/suggestions", protectRoute, getUserSuggestions);
+router.post(
+  "/follow/:id",
+  protectRoute,
+  validateParams(followParamsSchema),
+  followOrUnfollowUser,
+);
+router.post(
+  "/update",
+  protectRoute,
+  validate(updateProfileSchema),
+  updateUserProfile,
+);
 
 export default router;
