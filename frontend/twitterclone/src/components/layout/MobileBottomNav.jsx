@@ -2,7 +2,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../context/SocketContext";
-import { Home, MessageSquare, User, LogOut } from "lucide-react";
+import { Home, MessageSquare, User, Shield, LogOut } from "lucide-react";
 
 export const MobileBottomNav = () => {
   const { authUser, logout } = useAuth();
@@ -14,6 +14,10 @@ export const MobileBottomNav = () => {
   const isFeedActive = location.pathname === "/";
   const isMessagesActive = location.pathname === "/messages";
   const isProfileActive = location.pathname === `/profile/${authUser.username}`;
+  const isAdminActive = location.pathname.startsWith("/admin");
+
+  const userRole = (authUser.role || "USER").toUpperCase();
+  const isModOrAdmin = ["ADMIN", "MODERATOR"].includes(userRole);
 
   return (
     <nav className="mobile-bottom-nav">
@@ -37,6 +41,13 @@ export const MobileBottomNav = () => {
         <User size={22} />
         <span className="mobile-nav-label">Profile</span>
       </Link>
+
+      {isModOrAdmin && (
+        <Link to="/admin" className={`mobile-nav-item ${isAdminActive ? "active" : ""}`}>
+          <Shield size={22} />
+          <span className="mobile-nav-label">Admin</span>
+        </Link>
+      )}
 
       <button type="button" onClick={logout} className="mobile-nav-item logout-item">
         <LogOut size={20} />

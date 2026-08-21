@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import User from "../model/user.model.js";
 import ApiError from "../utils/ApiError.js";
 
-export const createUser = async ({ fullname, username, email, password }) => {
+export const createUser = async ({ fullname, username, email, password, role = "USER" }) => {
   const existingUsername = await User.findOne({ username });
   if (existingUsername) {
     throw new ApiError(400, "Username already taken");
@@ -21,6 +21,7 @@ export const createUser = async ({ fullname, username, email, password }) => {
     username,
     email,
     password: hashedPassword,
+    role: (role || "USER").toUpperCase(),
   });
 
   await newUser.save();
@@ -39,6 +40,16 @@ export const authenticateUser = async ({ username, password }) => {
   const isPasswordCorrect = await bcrypt.compare(password, user.password);
   if (!isPasswordCorrect) {
     throw new ApiError(400, "Invalid credentials");
+  }
+
+  // Check suspension
+  if (user.isSuspended) {
+    throw new ApiError(
+      403,
+      user.suspensionReason
+        ? `Your account has been suspended: ${user.suspensionReason}`
+        : "Your account has been suspended. Please contact support."
+    );
   }
 
   const userResponse = user.toObject();

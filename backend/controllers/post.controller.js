@@ -72,9 +72,9 @@ export const commentOnPostController = async (req, res, next) => {
 
 export const deletePostController = async (req, res, next) => {
   try {
-    const userId = req.user._id;
+    const user = req.user;
     const postId = req.params.id;
-    const result = await deletePost({ userId, postId });
+    const result = await deletePost({ user, postId });
     return ApiResponse.success(res, 200, result.message);
   } catch (error) {
     next(error);

@@ -28,6 +28,13 @@ const env = {
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
   CORS_ORIGIN: process.env.CORS_ORIGIN || "http://localhost:5173",
+
+  // AI Moderation & Intelligence Configuration (Backend Exclusive)
+  AI_API_KEY: process.env.AI_API_KEY || "",
+  AI_PROVIDER: process.env.AI_PROVIDER || "mock", // "mock" | "gemini" | "openai"
+  AI_MODEL: process.env.AI_MODEL || "gemini-1.5-flash",
+  AI_TIMEOUT_MS: parseInt(process.env.AI_TIMEOUT_MS, 10) || 5000,
+  AI_MODERATION_FAIL_MODE: process.env.AI_MODERATION_FAIL_MODE || "FAIL_OPEN",
 };
 
 export default env;

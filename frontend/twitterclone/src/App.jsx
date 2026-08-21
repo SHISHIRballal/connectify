@@ -7,6 +7,8 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { FeedPage } from "./pages/FeedPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ChatPage } from "./pages/ChatPage";
+import { AdminPage } from "./pages/AdminPage";
+import { RequireRole } from "./components/common/RequireRole";
 
 const ProtectedRoute = ({ children }) => {
   const { authUser, loading } = useAuth();
@@ -75,6 +77,16 @@ function App() {
                   <ProtectedRoute>
                     <ProfilePage />
                   </ProtectedRoute>
+                }
+              />
+
+              {/* Protected Admin & Moderation Routes */}
+              <Route
+                path="/admin"
+                element={
+                  <RequireRole allowedRoles={["ADMIN", "MODERATOR"]}>
+                    <AdminPage />
+                  </RequireRole>
                 }
               />
 

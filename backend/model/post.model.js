@@ -43,12 +43,39 @@ const postSchema = new mongoose.Schema(
       },
     ],
     comments: [commentSchema],
+
+    // AI-Powered Moderation Fields
+    moderationStatus: {
+      type: String,
+      enum: ["SAFE", "FLAGGED", "BLOCKED"],
+      default: "SAFE",
+      index: true,
+    },
+    moderationScore: {
+      type: Number,
+      default: 0.0,
+      min: 0.0,
+      max: 1.0,
+    },
+    moderationCategories: {
+      type: [String],
+      default: [],
+    },
+    moderationReason: {
+      type: String,
+      default: "",
+    },
+    moderatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   { timestamps: true }
 );
 
 // Compound indexes for optimal cursor pagination and sorting
 postSchema.index({ createdAt: -1, _id: -1 });
+postSchema.index({ moderationStatus: 1, createdAt: -1 });
 postSchema.index({ user: 1, createdAt: -1, _id: -1 });
 postSchema.index({ likes: 1, createdAt: -1 });
 

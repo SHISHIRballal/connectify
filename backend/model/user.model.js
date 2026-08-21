@@ -52,11 +52,38 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "admin"],
-      default: "user",
+      enum: ["USER", "MODERATOR", "ADMIN", "user", "moderator", "admin"],
+      default: "USER",
+    },
+    isSuspended: {
+      type: Boolean,
+      default: false,
+    },
+    suspendedAt: {
+      type: Date,
+      default: null,
+    },
+    suspensionReason: {
+      type: String,
+      default: "",
     },
   },
   { timestamps: true },
 );
+
+// Indexes for optimal user queries and aggregation pipelines
+userSchema.index({ createdAt: -1 });
+userSchema.index({ role: 1 });
+userSchema.index({ isSuspended: 1 });
+userSchema.index({ followers: 1 });
+userSchema.index({ following: 1 });
+
+// Normalize role to uppercase before saving
+userSchema.pre("save", function (next) {
+  if (this.role) {
+    this.role = this.role.toUpperCase();
+  }
+  next();
+});
 
 export default mongoose.model("User", userSchema);

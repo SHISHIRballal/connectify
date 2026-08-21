@@ -1,14 +1,18 @@
 import { v2 as cloudinary } from "cloudinary";
 import Post from "../model/post.model.js";
 import User from "../model/user.model.js";
+import Report from "../model/report.model.js";
+import ModerationLog from "../model/moderationLog.model.js";
 import ApiError from "../utils/ApiError.js";
 import { encodeCursor, decodeCursor } from "../utils/cursor.js";
+import { moderatePostContent } from "./ai/moderationService.js";
 
 /**
  * Fetch feed posts with cursor-based pagination
  */
 export const getFeedPosts = async ({ cursor, limit = 10 }) => {
-  const filter = {};
+  // Exclude blocked posts from public feed
+  const filter = { moderationStatus: { $ne: "BLOCKED" } };
 
   if (cursor) {
     const cursorData = decodeCursor(cursor);
@@ -16,10 +20,16 @@ export const getFeedPosts = async ({ cursor, limit = 10 }) => {
       throw new ApiError(400, "Invalid pagination cursor");
     }
 
-    filter.$or = [
-      { createdAt: { $lt: cursorData.createdAt } },
-      { createdAt: cursorData.createdAt, _id: { $lt: cursorData._id } },
+    filter.$and = [
+      { moderationStatus: { $ne: "BLOCKED" } },
+      {
+        $or: [
+          { createdAt: { $lt: cursorData.createdAt } },
+          { createdAt: cursorData.createdAt, _id: { $lt: cursorData._id } },
+        ],
+      },
     ];
+    delete filter.moderationStatus;
   }
 
   // Fetch limit + 1 items to determine if a subsequent page exists
@@ -28,11 +38,11 @@ export const getFeedPosts = async ({ cursor, limit = 10 }) => {
     .limit(limit + 1)
     .populate({
       path: "user",
-      select: "username fullname profileimg bio",
+      select: "username fullname profileimg bio role isSuspended",
     })
     .populate({
       path: "comments.user",
-      select: "username fullname profileimg",
+      select: "username fullname profileimg role",
     });
 
   let hasNextPage = false;
@@ -65,7 +75,7 @@ export const getUserPosts = async ({ username, cursor, limit = 10 }) => {
     throw new ApiError(404, "User not found");
   }
 
-  const filter = { user: user._id };
+  const filter = { user: user._id, moderationStatus: { $ne: "BLOCKED" } };
 
   if (cursor) {
     const cursorData = decodeCursor(cursor);
@@ -73,10 +83,17 @@ export const getUserPosts = async ({ username, cursor, limit = 10 }) => {
       throw new ApiError(400, "Invalid pagination cursor");
     }
 
-    filter.$or = [
-      { createdAt: { $lt: cursorData.createdAt } },
-      { createdAt: cursorData.createdAt, _id: { $lt: cursorData._id } },
+    filter.$and = [
+      { user: user._id, moderationStatus: { $ne: "BLOCKED" } },
+      {
+        $or: [
+          { createdAt: { $lt: cursorData.createdAt } },
+          { createdAt: cursorData.createdAt, _id: { $lt: cursorData._id } },
+        ],
+      },
     ];
+    delete filter.user;
+    delete filter.moderationStatus;
   }
 
   const posts = await Post.find(filter)
@@ -84,11 +101,11 @@ export const getUserPosts = async ({ username, cursor, limit = 10 }) => {
     .limit(limit + 1)
     .populate({
       path: "user",
-      select: "username fullname profileimg bio",
+      select: "username fullname profileimg bio role isSuspended",
     })
     .populate({
       path: "comments.user",
-      select: "username fullname profileimg",
+      select: "username fullname profileimg role",
     });
 
   let hasNextPage = false;
@@ -113,12 +130,38 @@ export const getUserPosts = async ({ username, cursor, limit = 10 }) => {
 };
 
 /**
- * Create a new post
+ * Create a new post with integrated AI content moderation
  */
 export const createPost = async ({ userId, text, img }) => {
   const user = await User.findById(userId);
   if (!user) {
     throw new ApiError(404, "User not found");
+  }
+
+  // 1. Run content through AI Moderation Service & Deterministic Policy Engine
+  const moderationResult = await moderatePostContent(text, img);
+
+  // 2. Handle HIGH RISK -> BLOCKED
+  if (moderationResult.moderationStatus === "BLOCKED") {
+    // Record audit log for security analytics
+    await ModerationLog.create({
+      moderator: userId,
+      action: "DELETE_POST",
+      targetType: "POST",
+      targetId: userId,
+      details: {
+        action: "AUTO_BLOCKED_BY_AI_POLICY",
+        riskScore: moderationResult.moderationScore,
+        categories: moderationResult.moderationCategories,
+        reason: moderationResult.moderationReason,
+        blockedText: text,
+      },
+    }).catch((err) => console.warn("Failed to log blocked post:", err.message));
+
+    throw new ApiError(
+      400,
+      `Your post was blocked by automated safety policies: ${moderationResult.moderationReason}`
+    );
   }
 
   let imgUrl = "";
@@ -127,17 +170,47 @@ export const createPost = async ({ userId, text, img }) => {
     imgUrl = uploadResponse.secure_url;
   }
 
+  // 3. Create post with assigned moderation status
   const newPost = new Post({
     user: userId,
     text: text || "",
     img: imgUrl,
+    moderationStatus: moderationResult.moderationStatus,
+    moderationScore: moderationResult.moderationScore,
+    moderationCategories: moderationResult.moderationCategories,
+    moderationReason: moderationResult.moderationReason,
+    moderatedAt: moderationResult.moderatedAt,
   });
 
   await newPost.save();
   await newPost.populate({
     path: "user",
-    select: "username fullname profileimg bio",
+    select: "username fullname profileimg bio role",
   });
+
+  // 4. Handle MEDIUM RISK -> FLAGGED (Auto-create report for moderator triage)
+  if (moderationResult.moderationStatus === "FLAGGED") {
+    const primaryReason = moderationResult.moderationCategories[0] || "other";
+    const mappedReason = [
+      "spam",
+      "harassment",
+      "hate_speech",
+      "inappropriate",
+      "violence",
+      "other",
+    ].includes(primaryReason)
+      ? primaryReason
+      : "inappropriate";
+
+    await Report.create({
+      reporter: userId,
+      reportedUser: userId,
+      reportedPost: newPost._id,
+      reason: mappedReason,
+      details: `[AI Auto-Flagged | Risk Score: ${Math.round(moderationResult.moderationScore * 100)}%] ${moderationResult.moderationReason}`,
+      status: "PENDING",
+    }).catch((err) => console.warn("Failed to auto-create report for flagged post:", err.message));
+  }
 
   return newPost;
 };
@@ -154,11 +227,9 @@ export const likeUnlikePost = async ({ userId, postId }) => {
   const isLiked = post.likes.some((id) => id.toString() === userId.toString());
 
   if (isLiked) {
-    // Unlike post
     await Post.findByIdAndUpdate(postId, { $pull: { likes: userId } });
     return { liked: false, message: "Post unliked successfully" };
   } else {
-    // Like post
     await Post.findByIdAndUpdate(postId, { $push: { likes: userId } });
     return { liked: true, message: "Post liked successfully" };
   }
@@ -184,23 +255,43 @@ export const commentOnPost = async ({ userId, postId, text }) => {
 
   await post.populate({
     path: "comments.user",
-    select: "username fullname profileimg",
+    select: "username fullname profileimg role",
   });
 
   return post.comments;
 };
 
 /**
- * Delete a post
+ * Delete a post (Allowed for author OR Moderator/Admin)
  */
-export const deletePost = async ({ userId, postId }) => {
+export const deletePost = async ({ user, postId }) => {
   const post = await Post.findById(postId);
   if (!post) {
     throw new ApiError(404, "Post not found");
   }
 
-  if (post.user.toString() !== userId.toString()) {
+  const userId = (user._id || user).toString();
+  const userRole = (user.role || "USER").toUpperCase();
+  const isOwner = post.user.toString() === userId;
+  const isModOrAdmin = ["MODERATOR", "ADMIN"].includes(userRole);
+
+  if (!isOwner && !isModOrAdmin) {
     throw new ApiError(403, "You are not authorized to delete this post");
+  }
+
+  if (!isOwner && isModOrAdmin) {
+    await ModerationLog.create({
+      moderator: user._id,
+      action: "DELETE_POST",
+      targetType: "POST",
+      targetId: postId,
+      details: {
+        postAuthor: post.user,
+        postText: post.text,
+        hadImage: !!post.img,
+        deletedByRole: userRole,
+      },
+    });
   }
 
   if (post.img) {

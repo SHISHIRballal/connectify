@@ -2,8 +2,10 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { postApi } from "../../api/postApi";
+import { aiApi } from "../../api/aiApi";
 import { UserAvatar } from "../common/UserAvatar";
-import { Heart, MessageSquare, Trash2, Send } from "lucide-react";
+import { ReportModal } from "./ReportModal";
+import { Heart, MessageSquare, Trash2, Send, Flag, Shield, Sparkles, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 
 export const PostCard = ({ post, onPostDeleted }) => {
   const { authUser } = useAuth();
@@ -16,9 +18,23 @@ export const PostCard = ({ post, onPostDeleted }) => {
   const [commentText, setCommentText] = useState("");
   const [commentLoading, setCommentLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
-  const isMyPost = (post.user?._id || post.user) === authUser._id;
+  // AI Summarization State
+  const [summaryState, setSummaryState] = useState({
+    loading: false,
+    summary: null,
+    error: null,
+  });
+
   const author = post.user || {};
+  const isMyPost = (author._id || author).toString() === authUser._id.toString();
+  const myRole = (authUser.role || "USER").toUpperCase();
+  const isModOrAdmin = ["MODERATOR", "ADMIN"].includes(myRole);
+  const authorRole = (author.role || "USER").toUpperCase();
+
+  // Show summarize button if the post has text content or comments
+  const canSummarize = (post.text && post.text.trim().length > 10) || (comments && comments.length > 0);
 
   const formatTime = (dateStr) => {
     if (!dateStr) return "";
@@ -79,7 +95,11 @@ export const PostCard = ({ post, onPostDeleted }) => {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Are you sure you want to delete this post?")) return;
+    const confirmMsg = isMyPost
+      ? "Are you sure you want to delete your post?"
+      : `[${myRole} ACTION] Are you sure you want to delete @${author.username}'s post?`;
+
+    if (!window.confirm(confirmMsg)) return;
 
     setIsDeleting(true);
     try {
@@ -95,6 +115,39 @@ export const PostCard = ({ post, onPostDeleted }) => {
     }
   };
 
+  const handleSummarize = async () => {
+    // If summary is already displayed, toggle it off
+    if (summaryState.summary && !summaryState.error) {
+      setSummaryState({ loading: false, summary: null, error: null });
+      return;
+    }
+
+    setSummaryState({ loading: true, summary: null, error: null });
+
+    try {
+      const data = await aiApi.summarize([post._id]);
+      if (data && data.success) {
+        setSummaryState({
+          loading: false,
+          summary: data.data.summary,
+          error: null,
+        });
+      } else {
+        setSummaryState({
+          loading: false,
+          summary: null,
+          error: data?.message || "Failed to generate summary",
+        });
+      }
+    } catch (err) {
+      setSummaryState({
+        loading: false,
+        summary: null,
+        error: err.message || "Summarization failed. Please try again.",
+      });
+    }
+  };
+
   return (
     <article className="post-card">
       <div className="post-card-header">
@@ -102,23 +155,49 @@ export const PostCard = ({ post, onPostDeleted }) => {
           <UserAvatar user={author} size="md" />
           <div className="author-names">
             <span className="author-fullname">{author.fullname || "User"}</span>
+
+            {/* Role Badge */}
+            {authorRole === "ADMIN" && (
+              <span className="role-tag admin-tag" title="Administrator">
+                <Shield size={10} /> ADMIN
+              </span>
+            )}
+            {authorRole === "MODERATOR" && (
+              <span className="role-tag mod-tag" title="Moderator">
+                <Shield size={10} /> MOD
+              </span>
+            )}
+
             <span className="author-username">@{author.username || "user"}</span>
             <span className="post-dot">·</span>
             <time className="post-timestamp">{formatTime(post.createdAt)}</time>
           </div>
         </Link>
 
-        {isMyPost && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="delete-post-btn"
-            title="Delete post"
-          >
-            <Trash2 size={16} />
-          </button>
-        )}
+        <div className="post-header-actions">
+          {!isMyPost && (
+            <button
+              type="button"
+              onClick={() => setIsReportOpen(true)}
+              className="report-post-btn"
+              title="Report post"
+            >
+              <Flag size={15} />
+            </button>
+          )}
+
+          {(isMyPost || isModOrAdmin) && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className={`delete-post-btn ${!isMyPost ? "mod-delete-btn" : ""}`}
+              title={isMyPost ? "Delete post" : `Moderator delete post`}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="post-card-body">
@@ -150,7 +229,47 @@ export const PostCard = ({ post, onPostDeleted }) => {
           <Heart size={18} fill={isLiked ? "currentColor" : "none"} />
           <span>{likes.length}</span>
         </button>
+
+        {/* AI Summarize Action */}
+        {canSummarize && (
+          <button
+            type="button"
+            className={`post-action-btn summarize-btn ${summaryState.summary ? "active" : ""}`}
+            onClick={handleSummarize}
+            disabled={summaryState.loading}
+            title="Summarize with AI"
+          >
+            {summaryState.loading ? (
+              <Loader2 size={18} className="spin-animation" />
+            ) : (
+              <Sparkles size={18} />
+            )}
+            <span>{summaryState.loading ? "Summarizing..." : "Summarize"}</span>
+          </button>
+        )}
       </div>
+
+      {/* AI Summary Display */}
+      {summaryState.summary && (
+        <div className="ai-summary-card">
+          <div className="ai-summary-header">
+            <Sparkles size={14} />
+            <span>AI Summary</span>
+          </div>
+          <p className="ai-summary-text">{summaryState.summary}</p>
+        </div>
+      )}
+
+      {/* AI Summary Error with Retry */}
+      {summaryState.error && (
+        <div className="ai-summary-error">
+          <AlertCircle size={14} />
+          <span>{summaryState.error}</span>
+          <button type="button" onClick={handleSummarize} className="ai-retry-btn">
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
 
       {/* Comments Section Accordion */}
       {showComments && (
@@ -177,6 +296,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
             <div className="comments-list">
               {comments.map((comment, index) => {
                 const commentUser = comment.user || {};
+                const cRole = (commentUser.role || "USER").toUpperCase();
                 return (
                   <div key={comment._id || index} className="comment-item">
                     <Link to={`/profile/${commentUser.username}`}>
@@ -187,6 +307,8 @@ export const PostCard = ({ post, onPostDeleted }) => {
                         <Link to={`/profile/${commentUser.username}`} className="comment-author">
                           {commentUser.fullname || "User"}
                         </Link>
+                        {cRole === "ADMIN" && <span className="role-tag admin-tag-mini">ADMIN</span>}
+                        {cRole === "MODERATOR" && <span className="role-tag mod-tag-mini">MOD</span>}
                         <span className="comment-time">{formatTime(comment.createdAt)}</span>
                       </div>
                       <p className="comment-text">{comment.text}</p>
@@ -200,6 +322,14 @@ export const PostCard = ({ post, onPostDeleted }) => {
           )}
         </div>
       )}
+
+      {/* Report Modal Dialog */}
+      <ReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        postId={post._id}
+        userId={author._id}
+      />
     </article>
   );
 };

@@ -12,6 +12,10 @@ import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import messageRoutes from "./routes/message.routes.js";
 import postRoutes from "./routes/post.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
+import reportRoutes from "./routes/report.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { app, server } from "./socket/socket.js";
 
@@ -53,6 +57,10 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Global error handler (must be registered after routes)
 app.use(errorHandler);
